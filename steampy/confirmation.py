@@ -17,9 +17,10 @@ if TYPE_CHECKING:
 
 
 class Confirmation:
-    def __init__(self, data_confid, nonce) -> None:
+    def __init__(self, data_confid, nonce, creator_id) -> None:
         self.data_confid = data_confid
         self.nonce = nonce
+        self.creator_id = creator_id
 
 
 class Tag(enum.Enum):
@@ -58,15 +59,19 @@ class ConfirmationExecutor:
 
     def _get_confirmations(self) -> list[Confirmation]:
         confirmations = []
-        confirmations_page = self._fetch_confirmations_page()
-        if confirmations_page.status_code == HTTPStatus.OK:
-            confirmations_json = json.loads(confirmations_page.text)
-            for conf in confirmations_json['conf']:
-                data_confid = conf['id']
-                nonce = conf['nonce']
-                confirmations.append(Confirmation(data_confid, nonce))
-            return confirmations
-        raise ConfirmationExpected
+        for i in range(5):
+            confirmations_page = self._fetch_confirmations_page()
+            if confirmations_page.status_code == 200:
+                confirmations_json = json.loads(confirmations_page.text)
+                for conf in confirmations_json['conf']:
+                    data_confid = conf['id']
+                    nonce = conf['nonce']
+                    creator_id = conf['creator_id']
+                    confirmations.append(Confirmation(data_confid, nonce, creator_id))
+                return confirmations
+            time.sleep(1)
+        else:
+            raise ConfirmationExpected
 
     def _fetch_confirmations_page(self) -> requests.Response:
         tag = Tag.CONF.value
@@ -123,5 +128,13 @@ class ConfirmationExecutor:
     @staticmethod
     def _get_confirmation_trade_offer_id(confirmation_details_page: str) -> str:
         soup = BeautifulSoup(confirmation_details_page, 'html.parser')
-        full_offer_id = soup.select('.tradeoffer')[0]['id']
-        return full_offer_id.split('_')[1]
+        trade_offer_id = soup.select('.tradeoffer')
+        if len(trade_offer_id) != 0:
+            full_offer_id = soup.select('.tradeoffer')[0]['id']
+            return full_offer_id.split('_')[1]
+        else:
+            div = soup.select('div')
+            if len(div) > 3:
+                return soup.select('div')[3].text.replace('\r', '').replace('\n', '').replace('\t', '')
+            else:
+                return ''
