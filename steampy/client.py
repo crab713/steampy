@@ -111,6 +111,9 @@ class SteamClient:
         self.market._set_login_executed(self.steam_guard, self._get_session_id())
         self._access_token = self._set_access_token()
 
+        if self.steam_guard.get('steamid', None) is None:
+            self.steam_guard['steamid'] = str(self.get_steam_id())
+
     def _set_access_token(self) ->str :
         steam_login_secure_cookies = [cookie for cookie in self._session.cookies if cookie.name == 'steamLoginSecure']
         cookie_value = steam_login_secure_cookies[0].value
@@ -163,13 +166,13 @@ class SteamClient:
         return msg in response.text
 
     @login_required
-    def get_my_inventory(self, game: GameOptions, merge: bool = True, count: int = 5000) -> dict:
+    def get_my_inventory(self, game: GameOptions, merge: bool = True, count: int = 1000) -> dict:
         steam_id = self.steam_guard['steamid']
         return self.get_partner_inventory(steam_id, game, merge, count)
 
     @login_required
     def get_partner_inventory(
-        self, partner_steam_id: str, game: GameOptions, merge: bool = True, count: int = 5000,
+        self, partner_steam_id: str, game: GameOptions, merge: bool = True, count: int = 1000,
     ) -> dict:
         url = f'{SteamUrl.COMMUNITY_URL}/inventory/{partner_steam_id}/{game.app_id}/{game.context_id}'
         params = {'l': 'english', 'count': count}
