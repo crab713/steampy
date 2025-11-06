@@ -174,18 +174,36 @@ class SteamClient:
     def get_partner_inventory(
         self, partner_steam_id: str, game: GameOptions, merge: bool = True, count: int = 1000,
     ) -> dict:
-        url = f'{SteamUrl.COMMUNITY_URL}/inventory/{partner_steam_id}/{game.app_id}/{game.context_id}'
-        params = {'l': 'english', 'count': count}
-
-        full_response = self._session.get(url, params=params)
-        response_dict = full_response.json()
-        if full_response.status_code == 429:
-            raise TooManyRequests('Too many requests, try again later.')
-
-        if response_dict is None or response_dict.get('success') != 1:
-            raise ApiException('Success value should be 1.')
-
-        return merge_items_with_descriptions_from_inventory(response_dict, game) if merge else response_dict
+        COUNT_PER_BATCH = 1000
+        more_items = 1
+        last_assetid = None
+        full_response = {}
+        while more_items:
+            url = '/'.join(
+                [SteamUrl.COMMUNITY_URL, 'inventory', str(partner_steam_id), game.app_id, game.context_id]
+            )
+            params = {'l': 'english', 'count': COUNT_PER_BATCH}
+            if last_assetid:
+                params['start_assetid'] = last_assetid
+            response_dict = self._session.get(url, params=params).json()
+            if 'success' not in response_dict or response_dict['success'] != 1:
+                raise ApiException('Success value should be 1.')
+            if 'more_items' in response_dict:
+                more_items = response_dict['more_items']
+            else:
+                more_items = 0
+            if more_items:
+                last_assetid = response_dict['last_assetid']
+            if full_response == {}:
+                full_response = response_dict.copy()
+                continue
+            for asset in response_dict['assets']:
+                full_response['assets'].append(asset)
+            for description in response_dict['descriptions']:
+                full_response['descriptions'].append(description)
+        if merge:
+            return merge_items_with_descriptions_from_inventory(full_response, game)
+        return full_response
 
     def _get_session_id(self) -> str:
         return self._session.cookies.get_dict(domain="steamcommunity.com", path="/").get('sessionid')
